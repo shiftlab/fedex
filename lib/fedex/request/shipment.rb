@@ -1,5 +1,3 @@
-require 'fedex/request/base'
-
 module Fedex
   module Request
     class Shipment < Base
@@ -50,7 +48,7 @@ module Fedex
           add_origin(xml) if @origin
           add_recipient(xml)
           add_shipping_charges_payment(xml)
-          add_special_services(xml) if @shipping_options[:return_reason] || @shipping_options[:cod] || @shipping_options[:saturday_delivery]
+          add_special_services(xml) if @shipping_options[:return_reason] || @shipping_options[:cod] || @shipping_options[:saturday_delivery] || @shipping_options[:shipping_document_specification]
           add_customs_clearance(xml) if @customs_clearance_detail
           add_custom_components(xml)
           xml.RateRequestTypes "ACCOUNT"
@@ -99,33 +97,61 @@ module Fedex
             }
           end
         }
+
+        # The Fedex XML response wants Shipping Documents included here.
+        if @shipping_options[:shipping_document_specification]
+          xml.ShippingDocumentSpecification {
+            xml.ShippingDocumentTypes "COMMERCIAL_INVOICE"
+            xml.CommercialInvoiceDetail {
+              xml.Format {
+                xml.ImageType "PDF"
+                xml.StockType "PAPER_LETTER"
+              }
+            }
+          }
+        end
       end
 
       def add_special_services(xml)
-        xml.SpecialServicesRequested {
-          if @shipping_options[:return_reason]
-            xml.SpecialServiceTypes "RETURN_SHIPMENT"
-            xml.ReturnShipmentDetail {
-              xml.ReturnType "PRINT_RETURN_LABEL"
-              xml.Rma {
-                xml.Reason "#{@shipping_options[:return_reason]}"
+        if @shipping_options[:shipping_document_specification]
+          # As of now this doesn't seem necessary.  Keep in case it's needed later:
+
+          # special_services_requested = @shipping_options[:special_services_requested]
+          # shipping_document_specification = @shipping_options[:shipping_document_specification]
+
+          # xml.SpecialServicesRequested {
+          #   xml.SpecialServiceTypes "ELECTRONIC_TRADE_DOCUMENTS"
+          #   xml.EtdDetail {
+          #     xml.RequestedDocumentCopies "COMMERCIAL_INVOICE"
+          #   }
+          # }
+
+        else
+          xml.SpecialServicesRequested {
+            if @shipping_options[:return_reason]
+              xml.SpecialServiceTypes "RETURN_SHIPMENT"
+              xml.ReturnShipmentDetail {
+                xml.ReturnType "PRINT_RETURN_LABEL"
+                xml.Rma {
+                  xml.Reason "#{@shipping_options[:return_reason]}"
+                }
               }
-            }
-          end
-          if @shipping_options[:cod]
-            xml.SpecialServiceTypes "COD"
-            xml.CodDetail {
-              xml.CodCollectionAmount {
-                xml.Currency @shipping_options[:cod][:currency].upcase if @shipping_options[:cod][:currency]
-                xml.Amount @shipping_options[:cod][:amount] if @shipping_options[:cod][:amount]
+            end
+            if @shipping_options[:cod]
+              xml.SpecialServiceTypes "COD"
+              xml.CodDetail {
+                xml.CodCollectionAmount {
+                  xml.Currency @shipping_options[:cod][:currency].upcase if @shipping_options[:cod][:currency]
+                  xml.Amount @shipping_options[:cod][:amount] if @shipping_options[:cod][:amount]
+                }
+                xml.CollectionType @shipping_options[:cod][:collection_type] if @shipping_options[:cod][:collection_type]
               }
-              xml.CollectionType @shipping_options[:cod][:collection_type] if @shipping_options[:cod][:collection_type]
-            }
-          end
-          if @shipping_options[:saturday_delivery]
-            xml.SpecialServiceTypes "SATURDAY_DELIVERY"
-          end
-        }
+            end
+            if @shipping_options[:saturday_delivery]
+              xml.SpecialServiceTypes "SATURDAY_DELIVERY"
+            end
+          }
+        end
       end
 
       # Callback used after a failed shipment response.
@@ -160,7 +186,7 @@ module Fedex
       end
 
       def service
-        { :id => 'ship', :version => Fedex::API_VERSION }
+        { :id => 'ship', :version => 19 }
       end
 
       # Successful request
